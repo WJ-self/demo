@@ -1,0 +1,6 @@
+[submodule "events_contrast_maximization"]
+	path = events_contrast_maximization
+	url = https://github.com/TimoStoff/events_contrast_maximization.git
+[submodule "PerceptualSimilarity"]
+	path = PerceptualSimilarity
+	url = https://github.com/cedric-scheerlinck/PerceptualSimilarity.git

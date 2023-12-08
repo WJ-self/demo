@@ -1,0 +1,19 @@
+numpy
+embag
+gdown
+tqdm
+opencv-python
+--extra-index-url https://rospypi.github.io/simple/
+rospy
+cv-bridge
+sensor_msgs
+std_msgs
+geometry_msgs
+
+pip install  pytorch torchvision cudatoolkit=$cuda_version -c pytorch
+pip install  opencv
+pip install  tqdm
+pip install  h5py 
+pip install  pandas
+pip install  scikit-image
+pip install thop --user
