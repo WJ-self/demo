@@ -20,7 +20,7 @@
     "data_loader": {
         "type": "MemMapDataLoader",
         "args": {
-            "data_file": "dataset/MVSEC",
+            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_MEMMAP/data_file.txt",
             "batch_size": 2,
             "shuffle": true,
             "num_workers": 0,
@@ -54,7 +54,7 @@
     "valid_data_loader": {
         "type": "MemMapDataLoader",
         "args": {
-            "data_file": "/path/to/validation_dataset",
+            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_MEMMAP/data_file.txt",
             "batch_size": 1,
             "shuffle": false,
             "num_workers": 0,
@@ -103,7 +103,7 @@
     },
     "trainer": {
         "epochs": 200,
-        "save_dir": "tmp",
+        "save_dir": "save/path",
         "save_period": 5,
         "verbosity": 2,
         "monitor": "min loss",

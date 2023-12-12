@@ -20,14 +20,14 @@
     "data_loader": {
         "type": "HDF5DataLoader",
         "args": {
-            "data_file": "/root/autodl-tmp/data_eventcnn/HQF_H5/data_file.txt",
+            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_H5/data_file.txt",
             "batch_size": 2,
             "shuffle": true,
             "num_workers": 0,
             "pin_memory": true,
             "sequence_kwargs": {
                 "sequence_length": 40,
-                "dataset_type": "DynamicH5Dataset",
+                "dataset_type": "HDF5Dataset",
                 "proba_pause_when_running": 0.05,
                 "proba_pause_when_paused": 0.9,
                 "normalize_image": false,
@@ -54,14 +54,14 @@
     "valid_data_loader": {
         "type": "HDF5DataLoader",
         "args": {
-            "data_file": "/root/autodl-tmp/data_eventcnn/HQF_H5/data_file.txt",
+            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_H5/data_file.txt",
             "batch_size": 1,
             "shuffle": false,
             "num_workers": 0,
             "pin_memory": true,
             "sequence_kwargs": {
                 "sequence_length": 320,
-                "dataset_type": "DynamicH5Dataset",
+                "dataset_type": "HDF5Dataset",
                 "normalize_image": true,
                 "dataset_kwargs": {
                     "max_length": 320,
@@ -103,7 +103,7 @@
     },
     "trainer": {
         "epochs": 200,
-        "save_dir": "/root/autodl-tmp/save_eventcnn/path",
+        "save_dir": "save/path",
         "save_period": 5,
         "verbosity": 2,
         "monitor": "min loss",

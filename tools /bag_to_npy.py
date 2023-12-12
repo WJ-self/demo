@@ -97,3 +97,4 @@ if __name__ == "__main__":
         bag_to_npy(path, output_pth, args.event_topic, args.image_topic)
         if args.remove:
             os.remove(path)
+        print("{} done".format(path))
