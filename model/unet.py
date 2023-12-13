@@ -1,226 +1,347 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as f
+from torch.nn import init
+from .submodules import \
+    ConvLayer, UpsampleConvLayer, TransposedConvLayer, \
+    RecurrentConvLayer, ResidualBlock, ConvLSTM, \
+    ConvGRU, RecurrentResidualLayer
 
-class UNet(nn.Module): 
-    def __init__(self, C, steps, channel_expansions=[1,2,4,4,8,8], emb_expansion=4, resblock_per_down_stage=3, drp_rate=0.0): # from the original code; set 0.1 for CIFAR10 and 0.0 for the others.
-        super().__init__()
-        self.emb = GammaEmbedding(steps=steps, dim=C, exp=emb_expansion)
-        self.conv1 = Conv2d(2*3, C, 3)
-        att_depth = len(channel_expansions)-2
+from .model_util import *
 
-        depth = len(channel_expansions) 
-        last_depth = depth-1
-        resblock_per_up_stage = resblock_per_down_stage + 1 # to match block connections between up stage and down stage, where { Down_WideResBlock_1 -> Up_WideResBlock_1 }, { Down_WideResBlock_2 -> Up_WideResBlock_2 }, and { Down_Block -> Up_WideResBlock_3 }
 
-        self.down = nn.ModuleList()
-        channels = list()
-        in_channel = C
-        channels.append(in_channel)
-        for d in range(depth):
-            out_channel = channel_expansions[d] * C
-            for _ in range(resblock_per_down_stage):
-                res_block = WideResNetBlock(in_channel, out_channel, emb_dimension=emb_expansion*C, attention=d==att_depth, drp_rate=drp_rate)
-                in_channel = out_channel
-                self.down.append(res_block)
-                channels.append(in_channel)
+class BaseUNet(nn.Module):
+    def __init__(self, base_num_channels, num_encoders, num_residual_blocks,
+                 num_output_channels, skip_type, norm, use_upsample_conv,
+                 num_bins, recurrent_block_type=None, kernel_size=5,
+                 channel_multiplier=2):
+        super(BaseUNet, self).__init__()
+        self.base_num_channels = base_num_channels
+        self.num_encoders = num_encoders
+        self.num_residual_blocks = num_residual_blocks
+        self.num_output_channels = num_output_channels
+        self.kernel_size = kernel_size
+        self.skip_type = skip_type
+        self.norm = norm
+        self.num_bins = num_bins
+        self.recurrent_block_type = recurrent_block_type
 
-            if d < last_depth:
-                self.down.append(DownBlock(in_channel, in_channel))
-                channels.append(in_channel)
+        self.encoder_input_sizes = [int(self.base_num_channels * pow(channel_multiplier, i)) for i in range(self.num_encoders)]
+        self.encoder_output_sizes = [int(self.base_num_channels * pow(channel_multiplier, i + 1)) for i in range(self.num_encoders)]
+        self.max_num_channels = self.encoder_output_sizes[-1]
+        self.skip_ftn = eval('skip_' + skip_type)
+        print('Using skip: {}'.format(self.skip_ftn))
+        if use_upsample_conv:
+            print('Using UpsampleConvLayer (slow, but no checkerboard artefacts)')
+            self.UpsampleLayer = UpsampleConvLayer
+        else:
+            print('Using TransposedConvLayer (fast, with checkerboard artefacts)')
+            self.UpsampleLayer = TransposedConvLayer
+        assert(self.num_output_channels > 0)
+        print(f'Kernel size {self.kernel_size}')
+        print(f'Skip type {self.skip_type}')
+        print(f'norm {self.norm}')
 
-        self.mid = nn.ModuleList([
-            WideResNetBlock(in_channel, in_channel, emb_dimension=emb_expansion*C, attention=True, drp_rate=drp_rate),
-            WideResNetBlock(in_channel, in_channel, emb_dimension=emb_expansion*C, attention=False, drp_rate=drp_rate)
-        ])
+    def build_resblocks(self):
+        self.resblocks = nn.ModuleList()
+        for i in range(self.num_residual_blocks):
+            self.resblocks.append(ResidualBlock(self.max_num_channels, self.max_num_channels, norm=self.norm))
 
-        self.up = nn.ModuleList()
-        for d in reversed(range(depth)):
-            out_channel = channel_expansions[d] * C
-            for _ in reversed(range(resblock_per_up_stage)):
-                res_block = WideResNetBlock(in_channel + channels.pop(), out_channel, emb_dimension=emb_expansion*C, attention=d==att_depth, drp_rate=drp_rate)
-                in_channel = out_channel
-                self.up.append(res_block)
-            
-            if d > 0:
-                self.up.append(UpBlock(in_channel, in_channel))
-        
-        del channels
+    def build_decoders(self):
+        decoder_input_sizes = reversed(self.encoder_output_sizes)
+        decoder_output_sizes = reversed(self.encoder_input_sizes)
+        decoders = nn.ModuleList()
+        for input_size, output_size in zip(decoder_input_sizes, decoder_output_sizes):
+            decoders.append(self.UpsampleLayer(
+                input_size if self.skip_type == 'sum' else 2 * input_size,
+                output_size, kernel_size=self.kernel_size,
+                padding=self.kernel_size // 2, norm=self.norm))
+        return decoders
 
-        self.gn = GroupNorm(channel_expansions[0]*C)
-        self.silu = nn.SiLU()
-        self.conv2 = Conv2d(channel_expansions[0]*C, 3, kernel=3, gain=1e-10)
-        
-    def forward(self, x, gamma):
+    def build_prediction_layer(self, num_output_channels, norm=None):
+        return ConvLayer(self.base_num_channels if self.skip_type == 'sum' else 2 * self.base_num_channels,
+                         num_output_channels, 1, activation=None, norm=norm)
 
-        emb = self.emb(gamma)
 
-        connections = list()
+class WNet(BaseUNet):
+    """
+    Recurrent UNet architecture where every encoder is followed by a recurrent convolutional block,
+    such as a ConvLSTM or a ConvGRU.
+    Symmetric, skip connections on every encoding layer.
+    One decoder for flow and one for image.
+    """
 
-        z = self.conv1(x)
-        connections.append(z)
+    def __init__(self, unet_kwargs):
+        unet_kwargs['num_output_channels'] = 3
+        super().__init__(**unet_kwargs)
+        self.head = ConvLayer(self.num_bins, self.base_num_channels,
+                              kernel_size=self.kernel_size, stride=1,
+                              padding=self.kernel_size // 2)  # N x C x H x W -> N x 32 x H x W
 
-        for module in self.down:
-            z = module(z, emb) if isinstance(module, WideResNetBlock) else module(z)
-            connections.append(z)
-        
-        for module in self.mid:
-            z = module(z, emb)
-        
-        for module in self.up:
-            z = module(torch.cat((z, connections.pop()), dim=1), emb) if isinstance(module, WideResNetBlock) else module(z)
-        
-        z = self.gn(z)
-        z = self.silu(z)
-        out = self.conv2(z)
+        self.encoders = nn.ModuleList()
+        for input_size, output_size in zip(self.encoder_input_sizes, self.encoder_output_sizes):
+            self.encoders.append(RecurrentConvLayer(
+                input_size, output_size, kernel_size=self.kernel_size, stride=2,
+                padding=self.kernel_size // 2,
+                recurrent_block_type=self.recurrent_block_type, norm=self.norm))
 
-        return out
-
-class GammaEmbedding(nn.Module):
-    def __init__(self, steps, dim, exp):
-        super().__init__()
-        self.linear1 = Linear(dim, exp*dim)
-        self.silu = nn.SiLU()
-        self.linear2 = Linear(exp*dim, exp*dim)
-        self.dim=dim
-
-        x = torch.log(torch.tensor(5000)) / (self.dim//2 - 1) # log( 5000^(1 / (d/2 - 1)) )
-        x = torch.exp( torch.arange(0, dim//2) * -x ) # 1 / 5000^(i / (d/2 - 1)) 
-        self.register_buffer('x', x.reshape((1, -1)))
-
-    def forward(self, gamma):
-        
-        x = gamma.reshape((-1, 1)) * self.x # gamma / 5000^(i / (d/2 - 1))
-        emb = torch.concat((torch.sin(x), torch.cos(x)), dim=1) # sin( gamma / 5000^(i / (d/2 - 1)) ) and cos( gamma / 10000^(i / (d/2 - 1)) )
-        if self.dim % 2 != 0:
-            emb = F.pad(emb, pad=(0, 1)) # add zero pad at last
-        
-        emb = self.linear1(emb)
-        emb = self.silu(emb)
-        emb = self.linear2(emb)
-
-        return emb # shape = (batch, exp*dim)
-
-class WideResNetBlock(nn.Module): # DDPM ResBlock
-    def __init__(self, in_channel, out_channel, emb_dimension, attention, drp_rate):
-        super().__init__()
-        self.do_attention = attention
-        self.is_match = in_channel == out_channel
-        self.C = out_channel
-
-        self.gn1 = GroupNorm(in_channel)
-        self.silu1 = nn.SiLU()
-        self.conv1 = Conv2d(in_channel, out_channel, kernel=3)
-        
-        self.silu2 = nn.SiLU()
-        self.linear1= Linear(emb_dimension, out_channel)
-
-        self.gn2 = GroupNorm(out_channel)
-        self.silu3 = nn.SiLU()
-        self.dropout = nn.Dropout(drp_rate) 
-        self.conv2 = Conv2d(out_channel, out_channel, kernel=3, gain=1e-10)
-
-        if not self.is_match: # to match 'channel' betweem 'x' and 'z'
-            self.linear2 = Linear(in_channel, out_channel)
-        
-        if self.do_attention:
-            self.att = SelfAttentionBlock(out_channel) 
-    
-
-    def forward(self, x, emb):
-        z = self.gn1(x)
-        z = self.silu1(z)
-        z = self.conv1(z)
-
-        B = x.shape[0]
-        C = self.C
-        emb = self.silu2(emb)
-        z = self.linear1(emb).reshape(B, C, 1, 1) + z
-
-        z = self.gn2(z)
-        z = self.silu3(z)
-        z = self.dropout(z) 
-        z = self.conv2(z)
-
-        if not self.is_match:
-            x = x.permute(0, 2, 3, 1) # shape=(B,C,H,W) -> (B,H,W,C)
-            x = self.linear2(x)
-            x = x.permute(0, 3, 1, 2) # shape=(B,H,W,C) -> (B,C,H,W)
-
-        out = x + z
-
-        if self.do_attention:
-            out = self.att(out)
-        
-        return out
-
-class SelfAttentionBlock(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.gn = GroupNorm(dim)
-        self.qkv = Linear(dim, 3*dim)
-        self.softmax = nn.Softmax(dim=-1)
-        self.proj = Linear(dim, dim, gain=1e-10)
+        self.build_resblocks()
+        self.image_decoders = self.build_decoders()
+        self.flow_decoders = self.build_decoders()
+        self.image_pred = self.build_prediction_layer(num_output_channels=1)
+        self.flow_pred = self.build_prediction_layer(num_output_channels=2)
+        self.states = [None] * self.num_encoders
 
     def forward(self, x):
-        B, C, H, W = x.shape
+        """
+        :param x: N x num_input_channels x H x W
+        :return: N x num_output_channels x H x W
+        """
 
-        z = self.gn(x)
-        z = z.permute(0, 2, 3, 1) # shape=(B,C,H,W) -> (B,H,W,C)
-        qkv = self.qkv(z).view(B, H*W, 3, C).permute(2,0,1,3) # shape=(B,H,W,3*C) -> (3,B,H*W,C)
-        q,k,v = qkv[0], qkv[1], qkv[2] # (B,H*W,C)
+        # head
+        x = self.head(x)
+        head = x
 
-        w = torch.matmul(q, k.transpose(-2,-1)) / (C**0.5) # shape=(B,H*W,H*W)
-        attention = self.softmax(w)
-        self_attention = torch.matmul(attention, v) # shape=(B,H*W,C)
+        # encoder
+        blocks = []
+        for i, encoder in enumerate(self.encoders):
+            x, state = encoder(x, self.states[i])
+            blocks.append(x)
+            self.states[i] = state
 
-        z = self.proj(z).permute(0, 3, 1, 2).reshape(B, C, H, W)
-        return x + z
+        # residual blocks
+        for resblock in self.resblocks:
+            x = resblock(x)
 
-class DownBlock(nn.Module):
-    def __init__(self, in_channel, out_channel):
-        super().__init__()
-        self.conv = Conv2d(in_channel, out_channel, kernel=3, stride=2)
-    
-    def forward(self, x): 
-        return self.conv(x)
+        # decoder
+        flow_activations = x
+        for i, decoder in enumerate(self.flow_decoders):
+            flow_activations = decoder(self.skip_ftn(flow_activations, blocks[self.num_encoders - i - 1]))
+        image_activations = x
+        for i, decoder in enumerate(self.image_decoders):
+            image_activations = decoder(self.skip_ftn(image_activations, blocks[self.num_encoders - i - 1]))
 
-class UpBlock(nn.Module):
-    def __init__(self, in_channel, out_channel):
-        super().__init__()
-        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.conv = Conv2d(in_channel, out_channel, kernel=3)
-    
-    def forward(self, x): 
-        x = self.upsample(x)
-        x = self.conv(x)
-        return x
+        # tail
+        flow = self.flow_pred(self.skip_ftn(flow_activations, head))
+        image = self.image_pred(self.skip_ftn(image_activations, head))
 
-class GroupNorm(nn.Module):
-    def __init__(self, in_channel, num_groups=8):
-        super().__init__()
-        self.group_norm = nn.GroupNorm(num_groups=num_groups, num_channels=in_channel) # same as the TensorFlow default
+        output_dict = {'image': image, 'flow': flow}
+
+        return output_dict
+
+
+class UNetFlow(BaseUNet):
+    """
+    Recurrent UNet architecture where every encoder is followed by a recurrent convolutional block,
+    such as a ConvLSTM or a ConvGRU.
+    Symmetric, skip connections on every encoding layer.
+    """
+
+    def __init__(self, unet_kwargs):
+        unet_kwargs['num_output_channels'] = 3
+        super().__init__(**unet_kwargs)
+        self.head = ConvLayer(self.num_bins, self.base_num_channels,
+                              kernel_size=self.kernel_size, stride=1,
+                              padding=self.kernel_size // 2)  # N x C x H x W -> N x 32 x H x W
+
+        self.encoders = nn.ModuleList()
+        for input_size, output_size in zip(self.encoder_input_sizes, self.encoder_output_sizes):
+            self.encoders.append(RecurrentConvLayer(
+                input_size, output_size, kernel_size=self.kernel_size, stride=2,
+                padding=self.kernel_size // 2,
+                recurrent_block_type=self.recurrent_block_type, norm=self.norm))
+
+        self.build_resblocks()
+        self.decoders = self.build_decoders()
+        self.pred = self.build_prediction_layer(num_output_channels=3)
+        self.states = [None] * self.num_encoders
 
     def forward(self, x):
-        return self.group_norm(x)
+        """
+        :param x: N x num_input_channels x H x W
+        :return: N x num_output_channels x H x W
+        """
 
-class Conv2d(nn.Module):
-    def __init__(self, in_channel, out_channel, kernel, stride=1, gain=1.0):
-        super().__init__()
-        self.conv = nn.Conv2d(in_channel, out_channel, kernel, stride, padding=1)
-        nn.init.xavier_uniform_(self.conv.weight, gain=torch.sqrt(torch.tensor(gain))) # the original code initialization
-        nn.init.constant_(self.conv.bias, 0.0) # the original code initialization
-    
+        # head
+        x = self.head(x)
+        head = x
+
+        # encoder
+        blocks = []
+        for i, encoder in enumerate(self.encoders):
+            x, state = encoder(x, self.states[i])
+            blocks.append(x)
+            self.states[i] = state
+
+        # residual blocks
+        for resblock in self.resblocks:
+            x = resblock(x)
+
+        # decoder
+        for i, decoder in enumerate(self.decoders):
+            x = decoder(self.skip_ftn(x, blocks[self.num_encoders - i - 1]))
+
+        # tail
+        img_flow = self.pred(self.skip_ftn(x, head))
+
+        output_dict = {'image': img_flow[:, 0:1, :, :], 'flow': img_flow[:, 1:3, :, :]}
+
+        return output_dict
+
+
+class UNetFlowNoRecur(BaseUNet):
+    """
+    Symmetric, skip connections on every encoding layer.
+    """
+
+    def __init__(self, unet_kwargs):
+        unet_kwargs['num_output_channels'] = 3
+        super().__init__(**unet_kwargs)
+        self.head = ConvLayer(self.num_bins, self.base_num_channels,
+                              kernel_size=self.kernel_size, stride=1,
+                              padding=self.kernel_size // 2)  # N x C x H x W -> N x 32 x H x W
+
+        self.encoders = nn.ModuleList()
+        for input_size, output_size in zip(self.encoder_input_sizes, self.encoder_output_sizes):
+            self.encoders.append(ConvLayer(
+                input_size, output_size, kernel_size=self.kernel_size, stride=2,
+                padding=self.kernel_size // 2,
+                norm=self.norm))
+
+        self.build_resblocks()
+        self.decoders = self.build_decoders()
+        self.pred = self.build_prediction_layer(num_output_channels=3)
+
     def forward(self, x):
-        return self.conv(x)
+        """
+        :param x: N x num_input_channels x H x W
+        :return: N x num_output_channels x H x W
+        """
 
-class Linear(nn.Module):
-    def __init__(self, in_feature, out_feature, gain=1.0):
-        super().__init__()
-        self.linear = nn.Linear(in_feature, out_feature)
-        nn.init.xavier_uniform_(self.linear.weight, gain=torch.sqrt(torch.tensor(gain))) # the original code initialization
-        nn.init.constant_(self.linear.bias, 0.0) # the original code initialization
+        # head
+        x = self.head(x)
+        head = x
+
+        # encoder
+        blocks = []
+        for i, encoder in enumerate(self.encoders):
+            x = encoder(x)
+            blocks.append(x)
+
+        # residual blocks
+        for resblock in self.resblocks:
+            x = resblock(x)
+
+        # decoder
+        for i, decoder in enumerate(self.decoders):
+            x = decoder(self.skip_ftn(x, blocks[self.num_encoders - i - 1]))
+
+        # tail
+        img_flow = self.pred(self.skip_ftn(x, head))
+
+        output_dict = {'image': img_flow[:, 0:1, :, :], 'flow': img_flow[:, 1:3, :, :]}
+
+        return output_dict
+
+
+class UNetRecurrent(BaseUNet):
+    """
+    Compatible with E2VID_lightweight
+    Recurrent UNet architecture where every encoder is followed by a recurrent convolutional block,
+    such as a ConvLSTM or a ConvGRU.
+    Symmetric, skip connections on every encoding layer.
+    """
+    def __init__(self, unet_kwargs):
+        final_activation = unet_kwargs.pop('final_activation', 'none')
+        self.final_activation = getattr(torch, final_activation, None)
+        print(f'Using {self.final_activation} final activation')
+        unet_kwargs['num_output_channels'] = 1
+        super().__init__(**unet_kwargs)
+        self.head = ConvLayer(self.num_bins, self.base_num_channels,
+                              kernel_size=self.kernel_size, stride=1,
+                              padding=self.kernel_size // 2)  # N x C x H x W -> N x 32 x H x W
+
+        self.encoders = nn.ModuleList()
+        for input_size, output_size in zip(self.encoder_input_sizes, self.encoder_output_sizes):
+            self.encoders.append(RecurrentConvLayer(
+                input_size, output_size, kernel_size=self.kernel_size, stride=2,
+                padding=self.kernel_size // 2,
+                recurrent_block_type=self.recurrent_block_type, norm=self.norm))
+
+        self.build_resblocks()
+        self.decoders = self.build_decoders()
+        self.pred = self.build_prediction_layer(self.num_output_channels, self.norm)
+        self.states = [None] * self.num_encoders
 
     def forward(self, x):
-        return self.linear(x)
+        """
+        :param x: N x num_input_channels x H x W
+        :return: N x num_output_channels x H x W
+        """
 
+        # head
+        x = self.head(x)
+        head = x
+
+        # encoder
+        blocks = []
+        for i, encoder in enumerate(self.encoders):
+            x, state = encoder(x, self.states[i])
+            blocks.append(x)
+            self.states[i] = state
+
+        # residual blocks
+        for resblock in self.resblocks:
+            x = resblock(x)
+
+        # decoder
+        for i, decoder in enumerate(self.decoders):
+            x = decoder(self.skip_ftn(x, blocks[self.num_encoders - i - 1]))
+
+        # tail
+        img = self.pred(self.skip_ftn(x, head))
+        if self.final_activation is not None:
+            img = self.final_activation(img)
+        return {'image': img}
+
+
+class UNet(BaseUNet):
+    """
+    UNet architecture. Symmetric, skip connections on every encoding layer.
+    """
+    def __init__(self, unet_kwargs):
+        super().__init__(**unet_kwargs)
+        self.encoders = nn.ModuleList()
+        for i, (input_size, output_size) in enumerate(zip(self.encoder_input_sizes, self.encoder_output_sizes)):
+            if i == 0:
+                input_size = self.num_bins  # since there is no self.head!
+            self.encoders.append(ConvLayer(
+                input_size, output_size, kernel_size=self.kernel_size, stride=2,
+                padding=self.kernel_size // 2,
+                norm=self.norm))
+
+        self.build_resblocks()
+        self.decoders = self.build_decoders()
+        self.pred = ConvLayer(self.base_num_channels, self.num_output_channels, kernel_size=1, activation=None)
+
+    def forward(self, x):
+        """
+        :param x: N x num_input_channels x H x W
+        :return: N x num_output_channels x H x W
+        """
+
+        # encoder
+        blocks = []
+        for i, encoder in enumerate(self.encoders):
+            x = encoder(x)
+            blocks.append(x)
+
+        # residual blocks
+        for resblock in self.resblocks:
+            x = resblock(x)
+
+        # decoder
+        for i, decoder in enumerate(self.decoders):
+            x = decoder(self.skip_ftn(x, blocks[self.num_encoders - i - 1]))
+
+        return self.pred(x)

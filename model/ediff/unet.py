@@ -3,11 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class UNet(nn.Module): 
-    def __init__(self, C, steps, channel_expansions=[1,2,4,4,8,8], emb_expansion=4, resblock_per_down_stage=3, drp_rate=0.0): # from the original code; set 0.1 for CIFAR10 and 0.0 for the others.
+    def __init__(self, C, steps, num_bins, channel_expansions=[1,2,4,4,8,8], emb_expansion=4, resblock_per_down_stage=3, drp_rate=0.0): # from the original code; set 0.1 for CIFAR10 and 0.0 for the others.
         super().__init__()
         self.emb = GammaEmbedding(steps=steps, dim=C, exp=emb_expansion)
         # self.conv1 = Conv2d(2*3, C, 3) #! modified
-        self.conv1 = Conv2d(10+3, C, 3) #todo: num_bins+3
+        self.conv1 = Conv2d(num_bins+3, C, 3) #todo: num_bins+3
         att_depth = len(channel_expansions)-2
 
         depth = len(channel_expansions) 
