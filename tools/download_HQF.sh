@@ -12,4 +12,4 @@ conda activate eventcnn
 source /opt/ros/noetic/setup.bash
 
 python /root/wj/event_cnn_minimal/events_contrast_maximization/tools/rosbag_to_h5.py /root/autodl-tmp/data_eventcnn/HQF --output_dir /root/autodl-tmp/data_eventcnn/HQF_H5 --event_topic /dvs/events --image_topic /dvs/image_raw
-
+python /root/wj/event_cnn_minimal/events_contrast_maximization/tools/rosbag_to_h5.py /root/autodl-tmp/data_eventcnn/HQF/desk_slow.h5 --output_dir /root/autodl-tmp/data_eventcnn/HQF_H52 --event_topic /dvs/events --image_topic /dvs/image_raw

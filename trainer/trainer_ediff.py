@@ -17,7 +17,7 @@ class Trainer(BaseTrainer):
     def __init__(self, model, optimizer, config, data_loader,
                  valid_data_loader=None, lr_scheduler=None, len_epoch=None):
         super().__init__(model, optimizer, config)
-        self.ema_model = copy.deepcopy(model)
+        self.ema_model = copy.deepcopy(self.model)
         self.config = config
         self.data_loader = data_loader
         if len_epoch is None:
@@ -107,7 +107,7 @@ class Trainer(BaseTrainer):
         log = self.train_metrics.result()
 
         print("validation")
-        if self.do_validation and epoch%10==0:
+        if self.do_validation and (epoch%10==0 or epoch==1):
             with torch.no_grad():
                 val_log = self._valid_epoch(epoch)
                 log.update(**{'val_' + k : v for k, v in val_log.items()})
