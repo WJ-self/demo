@@ -3,23 +3,27 @@
     "n_gpu": 1,
     "arch": {
         "type": "ediff",
-        "steps": 1000,
-        "sample_steps": 1000,
         "args": {
+            "steps": 2000,
+            "sample_steps": 100,
             "unet_kwargs": {
-                "C": 32, 
-                "num_bins": 10,
-                "channel_expansions": [1,2,4,4,8,8],
-                "emb_expansion":4,
-                "resblock_per_down_stage":3,
-                "drop_rate":0.0
+                "in_channel": 6,
+                "out_channel": 1,
+                "inner_channel": 32,
+                "norm_groups": 32,
+                "channel_mults": [1, 2, 4, 8, 8],
+                "attn_res": [8],
+                "res_blocks": 3,
+                "dropout": 0,
+                "with_noise_level_emb": true,
+                "image_size": 128
             }
         }
     },
     "data_loader": {
         "type": "HDF5DataLoader",
         "args": {
-            "data_file": "/root/autodl-tmp/data_eventcnn/HQF_H5/data_file.txt",
+            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_H5/data_file.txt",
             "batch_size": 2,
             "shuffle": true,
             "num_workers": 0,
@@ -53,7 +57,7 @@
     "valid_data_loader": {
         "type": "HDF5DataLoader",
         "args": {
-            "data_file": "/root/autodl-tmp/data_eventcnn/HQF_H5/data_file.txt",
+            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_H5/data_file.txt",
             "batch_size": 1,
             "shuffle": false,
             "num_workers": 0,
@@ -91,7 +95,7 @@
         }
     },
     "trainer": {
-        "epochs": 200,
+        "epochs": 40,
         "save_dir": "/root/autodl-tmp/save_eventcnn/path",
         "save_period": 5,
         "verbosity": 2,

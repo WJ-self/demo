@@ -47,6 +47,31 @@ def make_flow_movie(event_previews, predicted_frames, groundtruth_frames, predic
         movie_frames.append(movie_frame)
     return torch.stack(movie_frames, dim=0).unsqueeze(0)
 
+def make_recon_video(pred_images, images):
+    # pred_images: a list of [B x C x H x W] predicted images
+    # images: a list of [B x C x H x W] ground truth images
+    # 修改这里以匹配 make_flow_movie 函数中的格式
+
+    movie_frames_pred = []
+    movie_frames_gt = []
+    for i in range(len(pred_images)):
+        # 对预测的图像帧进行处理
+        pred_frame = pred_images[i].squeeze(0)  # 假设 B=1
+        movie_frames_pred.append(pred_frame)
+
+        # 对真实的图像帧进行处理
+        gt_frame = images[i].squeeze(0)  # 假设 B=1
+        movie_frames_gt.append(gt_frame)
+
+    # 将处理后的帧堆叠起来
+    pred_video_tensor = torch.stack(movie_frames_pred, dim=1)
+    gt_video_tensor = torch.stack(movie_frames_gt, dim=1)
+
+    return pred_video_tensor.unsqueeze(0), gt_video_tensor.unsqueeze(0)
+
+
+
+
 
 def flush(summary_writer):
     for writer in summary_writer.all_writers.values():

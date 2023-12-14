@@ -6,7 +6,8 @@ import copy
 from base.base_trainer_ediff import BaseTrainer
 from utils import inf_loop, MetricTracker
 from utils.myutil import mean
-from utils.training_utils import make_flow_movie, select_evenly_spaced_elements, make_tc_vis, make_vw_vis
+from utils.training_utils import make_flow_movie, select_evenly_spaced_elements, make_tc_vis, make_vw_vis,make_recon_video
+import tqdm
 # from utils.data import data_sources
 
 class Trainer(BaseTrainer):
@@ -164,7 +165,7 @@ class Trainer(BaseTrainer):
         print(f'Making preview {tag_prefix}')
         event_previews, pred_flows, pred_images, flows, images, voxels = [], [], [], [], [], []
         self.model.reset_states()
-        for i, item in enumerate(sequence):
+        for i, item in tqdm.tqdm(enumerate(sequence),total = len(sequence), desc=f'[preview sequence.]:',leave=False):
             item = {k: v[0:1, ...] for k, v in item.items()}  # set batch size to 1
             events, image, flow = self.to_device(item)
             img_XT = torch.randn_like(image).to(self.device)
@@ -175,26 +176,36 @@ class Trainer(BaseTrainer):
             flows.append(flow)
             images.append(image)
             voxels.append(events)
+        
+        # 调用函数
+        pred_video_tensor, gt_video_tensor = make_recon_video(pred_images, images)
+        self.writer.writer.add_video(f'{tag_prefix}/pred_images', pred_video_tensor, global_step=epoch, fps=20)
+        self.writer.writer.add_video(f'{tag_prefix}/images', gt_video_tensor, global_step=epoch, fps=20)
 
-        tc_loss_ftn = self.get_loss_ftn('temporal_consistency_loss')
-        if self.true_once and tc_loss_ftn is not None:
-            for i, image in enumerate(images):
-                output = tc_loss_ftn(i, image, pred_images[i], flows[i], output_images=True)
-                if output is not None:
-                    video_tensor = make_tc_vis(output[1])
-                    self.writer.writer.add_video(f'warp_vis/tc_{tag_prefix}',
-                            video_tensor, global_step=epoch, fps=2)
-                    break
+        # pred_images_video_tensor =  torch.stack(pred_images, dim=2)
+        # images_video_tensor = torch.stack(pred_images, dim=2)
+        # print("+++++++++pred_images_video_tensor.shape",pred_images_video_tensor.shape)
+        # print("+++++++++images_video_tensor.shape",images_video_tensor.shape)
 
-        vw_loss_ftn = self.get_loss_ftn('voxel_warp_flow_loss')
-        if self.true_once and vw_loss_ftn is not None:
-            for i, image in enumerate(images):
-                output = vw_loss_ftn(voxels[i], flows[i], output_images=True)
-                if output is not None:
-                    video_tensor = make_vw_vis(output[1])
-                    self.writer.writer.add_video(f'warp_vox/tc_{tag_prefix}',
-                            video_tensor, global_step=epoch, fps=1)
-                    break
+        # tc_loss_ftn = self.get_loss_ftn('temporal_consistency_loss')
+        # if self.true_once and tc_loss_ftn is not None:
+        #     for i, image in enumerate(images):
+        #         output = tc_loss_ftn(i, image, pred_images[i], flows[i], output_images=True)
+        #         if output is not None:
+        #             video_tensor = make_tc_vis(output[1])
+        #             self.writer.writer.add_video(f'warp_vis/tc_{tag_prefix}',
+        #                     video_tensor, global_step=epoch, fps=2)
+        #             break
+
+        # vw_loss_ftn = self.get_loss_ftn('voxel_warp_flow_loss')
+        # if self.true_once and vw_loss_ftn is not None:
+        #     for i, image in enumerate(images):
+        #         output = vw_loss_ftn(voxels[i], flows[i], output_images=True)
+        #         if output is not None:
+        #             video_tensor = make_vw_vis(output[1])
+        #             self.writer.writer.add_video(f'warp_vox/tc_{tag_prefix}',
+        #                     video_tensor, global_step=epoch, fps=1)
+        #             break
         
         non_zero_voxel = torch.stack([s['events'] for s in sequence])
         non_zero_voxel = non_zero_voxel[non_zero_voxel != 0]
@@ -210,8 +221,8 @@ class Trainer(BaseTrainer):
                                   torch.stack(pred_flows))
         self.writer.add_histogram(f'{tag_prefix}_image/prediction',
                                   torch.stack(pred_images))
-        video_tensor = make_flow_movie(event_previews, pred_images, images, pred_flows, flows)
-        self.writer.writer.add_video(f'{tag_prefix}', video_tensor, global_step=epoch, fps=20)
+        # video_tensor = make_flow_movie(event_previews, pred_images, images, pred_flows, flows)
+        # self.writer.writer.add_video(f'{tag_prefix}', video_tensor, global_step=epoch, fps=20)
 
     def exec_ema(self, model, ema_model, decay=0.9999):
         model_dict = model.state_dict()

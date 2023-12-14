@@ -288,7 +288,7 @@ class ediff(BaseModel):
     '''
     def __init__(self, unet_kwargs, steps=1000, sample_steps=1000):
         super().__init__()
-        self.model = UNet_ediff(unet_kwargs, steps=steps)
+        self.model = UNet_ediff(**unet_kwargs)
         self.diffusion = GaussianDiffusion(self.model, steps, sample_steps)
 
     def reset_states(self):
@@ -302,7 +302,7 @@ class ediff(BaseModel):
                  displacement within event_tensor.
         """
         loss = self.diffusion(img_X0, event_tensor)
-        return {'loss', loss}
+        return loss
 
     def sample(self, img_XT, event_tensor):
         return {'image':self.diffusion.sample(img_XT, event_tensor)}

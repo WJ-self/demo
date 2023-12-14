@@ -41,7 +41,7 @@ class GaussianDiffusion(nn.Module):
 
             time = step * x_t.new_ones((B, ), dtype=torch.int64)
             gamma = self._extract(self.sample_alphas_bar, time, dimension_num)
-            epsilon = self.model(torch.cat((x_t, x_c), dim=1), torch.sqrt(gamma))
+            epsilon = self.model(torch.cat((x_t, x_c), dim=1), torch.sqrt(gamma)) #! error
 
             one_over_sqrt_alpha = self._extract(self.sample_one_over_sqrt_alphas, time, dimension_num)
             beta_over_sqrt_one_minus_alpha_bar = self._extract(self.sample_betas_over_sqrt_one_minus_alphas_bar, time, dimension_num)
