@@ -19,7 +19,7 @@ from parse_config import ConfigParser
 
 import pathlib
 temp = pathlib.PosixPath
-pathlib.PosixPath = pathlib.WindowsPath
+# pathlib.PosixPath = pathlib.WindowsPath
 
 model_info = {}
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -183,3 +183,6 @@ if __name__ == '__main__':
     args, checkpoint = legacy_compatibility(args, checkpoint)
     model = load_model(checkpoint)
     main(args, model)
+
+# python inference.py --checkpoint_path pretrained/reconstruction_model.pth --log_path /root/autodl-tmp/save_e2vid/infer_log/2312151029 --device 0 --events_file_path /root/autodl-tmp/data_eventcnn/ECD_H5/val/shapes_6dof.h5 --output_folder /root/autodl-tmp/save_e2vid/infer
+# python inference.py --checkpoint_path pretrained/reconstruction_model.pth --device 0 --events_file_path /root/autodl-tmp/data_eventcnn/ECD_H5/val/shapes_6dof.h5 --output_folder /root/autodl-tmp/save_e2vid/infer

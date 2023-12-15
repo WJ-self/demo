@@ -169,8 +169,7 @@ class ResnetBlocWithAttn(nn.Module):
 class UNet(nn.Module):
     def __init__(
         self,
-        in_channel=6,
-        out_channel=3,
+        out_channel=1,
         inner_channel=32,
         norm_groups=32,
         channel_mults=(1, 2, 4, 8, 8),
@@ -178,8 +177,10 @@ class UNet(nn.Module):
         res_blocks=3,
         dropout=0,
         with_noise_level_emb=True,
-        image_size=128
+        image_size=128,
+        num_bins=5,
     ):
+        in_channel=num_bins+out_channel
         super().__init__()
 
         if with_noise_level_emb:

@@ -6,9 +6,8 @@
         "args": {
             "steps": 2000,
             "sample_steps": 100,
-            "num_bins":5,
             "unet_kwargs": {
-                "in_channel": 6,
+                "num_bins":5,
                 "out_channel": 1,
                 "inner_channel": 32,
                 "norm_groups": 32,
@@ -95,7 +94,7 @@
         }
     },
     "trainer": {
-        "epochs": 40,
+        "epochs": 200,
         "save_dir": "/root/autodl-tmp/save_eventcnn/path",
         "save_period": 5,
         "verbosity": 2,

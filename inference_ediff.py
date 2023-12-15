@@ -91,7 +91,7 @@ def main(args, model):
     for i, item in enumerate(tqdm(data_loader, desc="[infer.]")):
         voxel = item['events'].to(device)
         image = item['frame'].to(device)
-        # writer.add_images('infer Images. GT', image, i)
+        writer.add_images('infer Images. GT', image, i)
         imgs.append(image)
         if not args.color:
             voxel = crop.pad(voxel)
@@ -135,10 +135,10 @@ def main(args, model):
     pred_video_tensor, gt_video_tensor = make_recon_video(pred_imgs, imgs)
     # 将视频数据添加到 TensorBoard
     # 注意：TensorBoard期望视频数据的形状为 (B, C, T, H, W)，其中 T 是帧数  
-    # 预测视频
-    writer.add_video('Predicted Video', pred_video_tensor,global_step=0,fps=20)
     # 真实视频
     writer.add_video('Ground Truth Video', gt_video_tensor,global_step=0,fps=20)
+    # 预测视频
+    writer.add_video('Predicted Video', pred_video_tensor,global_step=0,fps=20)
     
 
 if __name__ == '__main__':
@@ -192,4 +192,4 @@ if __name__ == '__main__':
     model = load_model(checkpoint)
     main(args, model)
 
-# python inference_ediff.py --checkpoint_path pretrained/demo_best_231214.pth --log_path /root/autodl-tmp/save_eventcnn/infer_log --device 0 --events_file_path /root/autodl-tmp/data_eventcnn/ECD_H5/val/shapes_6dof.h5 --output_folder /root/autodl-tmp/save_eventcnn/infer
+# python inference_ediff.py --checkpoint_path pretrained/demo_best_231214.pth --log_path /root/autodl-tmp/save_eventcnn/infer_log/12151020 --device 0 --events_file_path /root/autodl-tmp/data_eventcnn/ECD_H5/val/shapes_6dof.h5 --output_folder /root/autodl-tmp/save_eventcnn/infer

@@ -106,8 +106,8 @@ class Trainer(BaseTrainer):
                 break
         log = self.train_metrics.result()
 
-        print("validation")
         if self.do_validation and (epoch%10==0 or epoch==1):
+            print("validation")
             with torch.no_grad():
                 val_log = self._valid_epoch(epoch)
                 log.update(**{'val_' + k : v for k, v in val_log.items()})
