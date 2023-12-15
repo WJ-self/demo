@@ -6,6 +6,7 @@
         "args": {
             "steps": 2000,
             "sample_steps": 100,
+            "num_bins":5,
             "unet_kwargs": {
                 "in_channel": 6,
                 "out_channel": 1,

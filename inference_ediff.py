@@ -19,36 +19,19 @@ from parse_config import ConfigParser
 
 import pathlib
 temp = pathlib.PosixPath
-pathlib.PosixPath = pathlib.WindowsPath
+# pathlib.PosixPath = pathlib.WindowsPath
+from torch.utils.tensorboard import SummaryWriter
 
 model_info = {}
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-def legacy_compatibility(args, checkpoint):
-    assert not (args.e2vid and args.firenet_legacy)
-    if args.e2vid:
-        args.legacy_norm = True
-        final_activation = 'sigmoid'
-    elif args.firenet_legacy:
-        args.legacy_norm = True
-        final_activation = ''
-    else:
-        return args, checkpoint
-    # Make compatible with Henri saved models
-    if not isinstance(checkpoint.get('config', None), ConfigParser) or args.e2vid or args.firenet_legacy:
-        checkpoint = make_henri_compatible(checkpoint, final_activation)
-    if args.firenet_legacy:
-        checkpoint['config']['arch']['type'] = 'FireNet_legacy'
-    return args, checkpoint
-
 
 def load_model(checkpoint):
     config = checkpoint['config']
     state_dict = checkpoint['state_dict']
 
     try:
-        model_info['num_bins'] = config['arch']['args']['unet_kwargs']['num_bins']
+        # model_info['num_bins'] = config['arch']['args']['unet_kwargs']['num_bins']
+        model_info['num_bins'] = 5
     except KeyError:
         model_info['num_bins'] = config['arch']['args']['num_bins']
     logger = config.get_logger('test')
@@ -69,9 +52,10 @@ def load_model(checkpoint):
 
     return model
 
-
 def main(args, model):
-    dataset_kwargs = {'transforms': {},
+    dataset_kwargs = {'transforms': {"RandomCrop": {
+                            "size": 112
+                        },},
                       'max_length': None,
                       'sensor_resolution': None,
                       'num_bins': 5,
@@ -89,23 +73,30 @@ def main(args, model):
     if args.legacy_norm:
         print('Using legacy voxel normalization')
         dataset_kwargs['transforms'] = {'LegacyNorm': {}}
+    writer = SummaryWriter(args.log_path)
 
     data_loader = InferenceDataLoader(args.events_file_path, dataset_kwargs=dataset_kwargs, ltype=args.loader_type)
 
     height, width = get_height_width(data_loader)
 
     model_info['input_shape'] = height, width
-    crop = CropParameters(width, height, model.num_encoders)
+    # crop = CropParameters(width, height, model.num_encoders)
+    crop = CropParameters(width, height, 1)
 
     ts_fname = setup_output_folder(args.output_folder)
     
     model.reset_states()
-    for i, item in enumerate(tqdm(data_loader)):
+    for i, item in enumerate(tqdm(data_loader, desc="[infer.]")):
         voxel = item['events'].to(device)
+        image = item['frame'].to(device)
+        writer.add_images('infer Images. GT', image, i)
         if not args.color:
             voxel = crop.pad(voxel)
         with CudaTimer('Inference'):
-            output = model(voxel)
+            img_XT = torch.rand_like(image).to(device)
+            print("++++++++++++img_XT.shape",img_XT.shape)
+            print("++++++++++++voxel.shape",voxel.shape)
+            output = model.sample(img_XT, voxel)
         # save sample images, or do something with output here
         if args.is_flow:
             flow_t = torch.squeeze(crop.crop(output['flow']))
@@ -125,15 +116,17 @@ def main(args, model):
             fname = 'flow_{:010d}.png'.format(i)
             cv2.imwrite(os.path.join(args.output_folder, fname), flow_img)
         else:
-            if args.color:
-                image = output['image']
-            else:
-                image = crop.crop(output['image'])
-                image = torch2cv2(image)
+            # if args.color:
+            #     image = output['image']
+            # else:
+            #! modified
+            pred_img = output['image']
+            writer.add_images('infer Images. Sample', pred_img, i)
+            pred_img = crop.crop(output['image'])
+            pred_img = torch2cv2(pred_img)
             fname = 'frame_{:010d}.png'.format(i)
-            cv2.imwrite(join(args.output_folder, fname), image)
+            cv2.imwrite(join(args.output_folder, fname), pred_img)
         append_timestamp(ts_fname, fname, item['timestamp'].item())
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Template')
@@ -141,6 +134,8 @@ if __name__ == '__main__':
                         help='path to latest checkpoint (default: None)')
     parser.add_argument('--events_file_path', required=True, type=str,
                         help='path to events (HDF5)')
+    parser.add_argument('--log_path', required=True, type=str,
+                        help='path to log')
     parser.add_argument('--output_folder', default="/tmp/output", type=str,
                         help='where to save outputs to')
     parser.add_argument('--device', default='0', type=str,
@@ -180,6 +175,8 @@ if __name__ == '__main__':
         os.environ['CUDA_VISIBLE_DEVICES'] = args.device
     print('Loading checkpoint: {} ...'.format(args.checkpoint_path))
     checkpoint = torch.load(args.checkpoint_path)
-    args, checkpoint = legacy_compatibility(args, checkpoint)
+    # args, checkpoint = legacy_compatibility(args, checkpoint)
     model = load_model(checkpoint)
     main(args, model)
+
+# python inference_ediff.py --checkpoint_path pretrained/demo_best_231214.pth --log_path /root/autodl-tmp/save_eventcnn/infer_log --device 0 --events_file_path /root/autodl-tmp/data_eventcnn/ECD_H5/val/shapes_6dof.h5 --output_folder /root/autodl-tmp/save_eventcnn/infer
