@@ -93,7 +93,7 @@ def main(args, model):
         if not args.color:
             voxel = crop.pad(voxel)
         with CudaTimer('Inference'):
-            img_XT = torch.rand_like(image).to(device)
+            img_XT = torch.randn_like(image).to(device)
             print("++++++++++++img_XT.shape",img_XT.shape)
             print("++++++++++++voxel.shape",voxel.shape)
             output = model.sample(img_XT, voxel)
