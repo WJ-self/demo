@@ -47,27 +47,40 @@ def make_flow_movie(event_previews, predicted_frames, groundtruth_frames, predic
         movie_frames.append(movie_frame)
     return torch.stack(movie_frames, dim=0).unsqueeze(0)
 
+import torch
+
+import torch
+
 def make_recon_video(pred_images, images):
-    # pred_images: a list of [B x C x H x W] predicted images
-    # images: a list of [B x C x H x W] ground truth images
-    # 修改这里以匹配 make_flow_movie 函数中的格式
+    # 检查输入列表是否为空
+    if not pred_images or not images:
+        raise ValueError("输入的预测图像列表或真实图像列表不能为空。")
+
+    # 检查两个列表的长度是否相同
+    if len(pred_images) != len(images):
+        raise ValueError("预测图像列表和真实图像列表的长度必须相同。")
 
     movie_frames_pred = []
     movie_frames_gt = []
-    for i in range(len(pred_images)):
-        # 对预测的图像帧进行处理
-        pred_frame = pred_images[i].squeeze(0)  # 假设 B=1
-        movie_frames_pred.append(pred_frame)
+    for pred_frame, gt_frame in zip(pred_images, images):
+        # 确保批量大小相同
+        if pred_frame.size(0) != gt_frame.size(0):
+            raise ValueError("每一对预测图像和真实图像的批量大小必须相同。")
 
-        # 对真实的图像帧进行处理
-        gt_frame = images[i].squeeze(0)  # 假设 B=1
-        movie_frames_gt.append(gt_frame)
+        # 处理批量大小大于1的情况
+        for i in range(pred_frame.size(0)):
+            # 转换为三通道
+            frame_pred_color = pred_frame[i].repeat(3, 1, 1)
+            frame_gt_color = gt_frame[i].repeat(3, 1, 1)
+
+            movie_frames_pred.append(frame_pred_color)
+            movie_frames_gt.append(frame_gt_color)
 
     # 将处理后的帧堆叠起来
-    pred_video_tensor = torch.stack(movie_frames_pred, dim=1)
-    gt_video_tensor = torch.stack(movie_frames_gt, dim=1)
+    pred_video_tensor = torch.stack(movie_frames_pred, dim=0).unsqueeze(0)
+    gt_video_tensor = torch.stack(movie_frames_gt, dim=0).unsqueeze(0)
 
-    return pred_video_tensor.unsqueeze(0), gt_video_tensor.unsqueeze(0)
+    return pred_video_tensor, gt_video_tensor
 
 
 

@@ -7,6 +7,7 @@ import cv2
 from tqdm import tqdm
 
 from utils.util import ensure_dir, flow2bgr_np
+from utils.training_utils import make_recon_video
 from model import model as model_arch
 from data_loader.data_loaders import InferenceDataLoader
 from model.model import ColorNet
@@ -86,16 +87,16 @@ def main(args, model):
     ts_fname = setup_output_folder(args.output_folder)
     
     model.reset_states()
+    imgs, pred_imgs = [], []
     for i, item in enumerate(tqdm(data_loader, desc="[infer.]")):
         voxel = item['events'].to(device)
         image = item['frame'].to(device)
-        writer.add_images('infer Images. GT', image, i)
+        # writer.add_images('infer Images. GT', image, i)
+        imgs.append(image)
         if not args.color:
             voxel = crop.pad(voxel)
         with CudaTimer('Inference'):
             img_XT = torch.randn_like(image).to(device)
-            print("++++++++++++img_XT.shape",img_XT.shape)
-            print("++++++++++++voxel.shape",voxel.shape)
             output = model.sample(img_XT, voxel)
         # save sample images, or do something with output here
         if args.is_flow:
@@ -121,12 +122,24 @@ def main(args, model):
             # else:
             #! modified
             pred_img = output['image']
+            pred_imgs.append(pred_img)
             writer.add_images('infer Images. Sample', pred_img, i)
+
             pred_img = crop.crop(output['image'])
             pred_img = torch2cv2(pred_img)
             fname = 'frame_{:010d}.png'.format(i)
             cv2.imwrite(join(args.output_folder, fname), pred_img)
         append_timestamp(ts_fname, fname, item['timestamp'].item())
+        if (i==10):
+            break
+    pred_video_tensor, gt_video_tensor = make_recon_video(pred_imgs, imgs)
+    # 将视频数据添加到 TensorBoard
+    # 注意：TensorBoard期望视频数据的形状为 (B, C, T, H, W)，其中 T 是帧数  
+    # 预测视频
+    writer.add_video('Predicted Video', pred_video_tensor,global_step=0,fps=20)
+    # 真实视频
+    writer.add_video('Ground Truth Video', gt_video_tensor,global_step=0,fps=20)
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Template')
