@@ -42,8 +42,8 @@ def load_model(checkpoint):
 
     model = model.to(device)
     model.eval()
-    if args.color:
-        model = ColorNet(model)
+    # if args.color:
+    #     model = ColorNet(model)
     for param in model.parameters():
         param.requires_grad = False
 
@@ -59,11 +59,11 @@ def legacy_compatibility(args, checkpoint):
         final_activation = ''
     else:
         return args, checkpoint
-    # Make compatible with Henri saved models
-    if not isinstance(checkpoint.get('config', None), ConfigParser) or args.e2vid or args.firenet_legacy:
-        checkpoint = make_henri_compatible(checkpoint, final_activation)
-    if args.firenet_legacy:
-        checkpoint['config']['arch']['type'] = 'FireNet_legacy'
+    # # Make compatible with Henri saved models
+    # if not isinstance(checkpoint.get('config', None), ConfigParser) or args.e2vid or args.firenet_legacy:
+    #     checkpoint = make_henri_compatible(checkpoint, final_activation)
+    # if args.firenet_legacy:
+    #     checkpoint['config']['arch']['type'] = 'FireNet_legacy'
     return args, checkpoint
 
 def main(config, model_recon=None):
@@ -78,7 +78,7 @@ def main(config, model_recon=None):
     logger.info(model)
 
     # init loss classes
-    loss_ftns = [getattr(module_loss, loss)(**kwargs) for loss, kwargs in config['loss_ftns'].items()]
+    # loss_ftns = [getattr(module_loss, loss)(**kwargs) for loss, kwargs in config['loss_ftns'].items()]
 
     # build optimizer, learning rate scheduler. delete every lines containing lr_scheduler for disabling scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
@@ -86,7 +86,7 @@ def main(config, model_recon=None):
 
     lr_scheduler = config.init_obj('lr_scheduler', torch.optim.lr_scheduler, optimizer)
 
-    trainer = Trainer(model, loss_ftns, optimizer, model_recon=model_recon, 
+    trainer = Trainer(model, optimizer, model_recon=model_recon, 
                       config=config,
                       data_loader=data_loader,
                       valid_data_loader=valid_data_loader,
@@ -136,4 +136,4 @@ if __name__ == '__main__':
         model_recon = load_model(checkpoint)
     main(config, model_recon)
 
-# python train_ediff.py --config config/ediff.json --reconstruction pretrained/reconstruction_model.pth --e2vid True
+# python train_ediff.py --config config/ediff.json --reconstruction pretrained/reconstruction_model.pth --e2vid
