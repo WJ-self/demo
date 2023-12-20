@@ -150,7 +150,7 @@ if __name__ == '__main__':
     if args.reconstruction:
         checkpoint = torch.load(args.reconstruction, args.device)
         args, checkpoint = legacy_compatibility(args, checkpoint)
-        model_recon = get_model_from_checkpoint(checkpoint)
+        model_recon=get_model_from_checkpoint(checkpoint)
         model_recon = load_model(checkpoint)
     main(config, model_recon)
 

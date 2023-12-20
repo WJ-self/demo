@@ -50,13 +50,6 @@ def load_model(checkpoint):
     return model
 '''
 
-def get_model_from_checkpoint(checkpoint):
-    config = checkpoint['config']
-    model = config.init_obj('arch', model_arch)
-    state_dict = checkpoint['state_dict']
-    model = load_model(model, state_dict)
-    return model
-
 def load_model(model, state_dict):
     model.load_state_dict(state_dict)
     model = model.to(device)
@@ -65,6 +58,41 @@ def load_model(model, state_dict):
         param.requires_grad = False
     return model
 
+def get_model_from_checkpoint_path(model_name, checkpoint_path):
+    """
+    Instantiate a PyTorch model class from a given model name and checkpoint path. According to the model name,
+    each checkpoint is parsed and each model class is instantiated with the correct parameters.
+    """
+    checkpoint = torch.load(checkpoint_path, device)
+    if model_name == "SPADE-E2VID":
+        model = model_arch.SpadeE2vid()
+        model.num_encoders = 3
+        state_dict = checkpoint
+    elif model_name == "SSL-E2VID":
+        unet_kwargs = {"base_num_channels": 32, "kernel_size": 5, "num_bins": 5, "num_encoders": 3,
+                       "recurrent_block_type": "convlstm", "num_residual_blocks": 2, "skip_type": "sum", "norm": None,
+                       "use_upsample_conv": True}
+        model = model_arch.E2VIDRecurrent(unet_kwargs)
+        state_dict = checkpoint
+    else:
+        if model_name == "E2VID":
+            unet_kwargs = checkpoint['model']
+            unet_kwargs['final_activation'] = 'sigmoid'
+            model = model_arch.E2VIDRecurrent(unet_kwargs)
+        elif model_name == "FireNet":
+            unet_kwargs = checkpoint['config']['model']
+            unet_kwargs['final_activation'] = ''
+            model = model_arch.FireNet_legacy(unet_kwargs)
+        else:
+            config = checkpoint['config']
+            model = config.init_obj('arch', model_arch)
+            if model_name == "ET-Net":
+                model.num_encoders = 3
+            elif model_name == "FireNet+":
+                model.num_encoders = 0
+        state_dict = checkpoint['state_dict']
+    model = load_model(model, state_dict)
+    return model
 
 def legacy_compatibility(args, checkpoint):
     assert not (args.e2vid and args.firenet_legacy)
@@ -148,9 +176,8 @@ if __name__ == '__main__':
     args = args.parse_args()
     model_recon = None
     if args.reconstruction:
-        checkpoint = torch.load(args.reconstruction, args.device)
+        checkpoint = torch.load(args.reconstruction)
         args, checkpoint = legacy_compatibility(args, checkpoint)
-        model_recon = get_model_from_checkpoint(checkpoint)
         model_recon = load_model(checkpoint)
     main(config, model_recon)
 

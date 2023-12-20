@@ -21,7 +21,7 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
 
-'''
+
 model_info = {}
 def load_model(checkpoint):
     config = checkpoint['config']
@@ -48,23 +48,7 @@ def load_model(checkpoint):
         param.requires_grad = False
 
     return model
-'''
-
-def get_model_from_checkpoint(checkpoint):
-    config = checkpoint['config']
-    model = config.init_obj('arch', model_arch)
-    state_dict = checkpoint['state_dict']
-    model = load_model(model, state_dict)
-    return model
-
-def load_model(model, state_dict):
-    model.load_state_dict(state_dict)
-    model = model.to(device)
-    model.eval()
-    for param in model.parameters():
-        param.requires_grad = False
-    return model
-
+''''''
 
 def legacy_compatibility(args, checkpoint):
     assert not (args.e2vid and args.firenet_legacy)
@@ -148,9 +132,8 @@ if __name__ == '__main__':
     args = args.parse_args()
     model_recon = None
     if args.reconstruction:
-        checkpoint = torch.load(args.reconstruction, args.device)
+        checkpoint = torch.load(args.reconstruction)
         args, checkpoint = legacy_compatibility(args, checkpoint)
-        model_recon = get_model_from_checkpoint(checkpoint)
         model_recon = load_model(checkpoint)
     main(config, model_recon)
 

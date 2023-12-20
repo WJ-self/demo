@@ -50,13 +50,6 @@ def load_model(checkpoint):
     return model
 '''
 
-def get_model_from_checkpoint(checkpoint):
-    config = checkpoint['config']
-    model = config.init_obj('arch', model_arch)
-    state_dict = checkpoint['state_dict']
-    model = load_model(model, state_dict)
-    return model
-
 def load_model(model, state_dict):
     model.load_state_dict(state_dict)
     model = model.to(device)
@@ -64,6 +57,7 @@ def load_model(model, state_dict):
     for param in model.parameters():
         param.requires_grad = False
     return model
+
 
 
 def legacy_compatibility(args, checkpoint):
@@ -150,7 +144,7 @@ if __name__ == '__main__':
     if args.reconstruction:
         checkpoint = torch.load(args.reconstruction, args.device)
         args, checkpoint = legacy_compatibility(args, checkpoint)
-        model_recon = get_model_from_checkpoint(checkpoint)
+        get_model_from_checkpoint(model_name, )
         model_recon = load_model(checkpoint)
     main(config, model_recon)
 
