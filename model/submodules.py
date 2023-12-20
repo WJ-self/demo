@@ -34,6 +34,35 @@ class ConvLayer(nn.Module):
 
         return out
 
+class TransposedConvLayer(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation='relu', norm=None):
+        super().__init__()
+
+        bias = norm != 'BN'
+        self.transposed_conv2d = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size, stride=2, padding=padding, output_padding=1, bias=bias)
+
+        if activation is not None:
+            self.activation = getattr(torch, activation)
+        else:
+            self.activation = None
+
+        self.norm = norm
+        if norm == 'BN':
+            self.norm_layer = nn.BatchNorm2d(out_channels)
+        elif norm == 'IN':
+            self.norm_layer = nn.InstanceNorm2d(out_channels, track_running_stats=True)
+
+    def forward(self, x):
+        out = self.transposed_conv2d(x)
+
+        if self.norm in ['BN', 'IN']:
+            out = self.norm_layer(out)
+
+        if self.activation is not None:
+            out = self.activation(out)
+
+        return out
 
 class UpsampleConvLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, activation='relu', norm=None):

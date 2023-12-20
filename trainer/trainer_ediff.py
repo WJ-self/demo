@@ -111,11 +111,11 @@ class Trainer(BaseTrainer):
                 break
         log = self.train_metrics.result()
 
-        # if self.do_validation and epoch%10==0 : #!modified
-        #     print("validation")
-        #     with torch.no_grad():
-        #         val_log = self._valid_epoch(epoch)
-        #         log.update(**{'val_' + k : v for k, v in val_log.items()})
+        if self.do_validation and (epoch%10==0 or epoch==0) : #!modified
+            print("validation")
+            with torch.no_grad():
+                val_log = self._valid_epoch(epoch)
+                log.update(**{'val_' + k : v for k, v in val_log.items()})
 
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
@@ -171,7 +171,7 @@ class Trainer(BaseTrainer):
         event_previews, pred_flows, pred_images, flows, images, voxels = [], [], [], [], [], []
         self.model.reset_states()
         for i, item in tqdm.tqdm(enumerate(sequence),total = len(sequence), desc=f'[preview sequence.]:',leave=False):
-            # item = {k: v[0:1, ...] for k, v in item.items()}  # set batch size to 1 #!modified for 
+            item = {k: v[0:1, ...] for k, v in item.items()}  # set batch size to 1 #!modified for 
             events, image, flow = self.to_device(item)
             if self.model_recon:
                 recon = self.model_recon(events)

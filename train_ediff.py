@@ -3,12 +3,10 @@ import collections
 import torch
 import numpy as np
 import data_loader.data_loaders as module_data
-import model.loss as module_loss
 import model.model as module_arch
 from parse_config import ConfigParser
 from trainer.trainer_ediff import Trainer
 
-from model.model import ColorNet
 from model import model as model_arch
 from utils.henri_compatible import make_henri_compatible
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -151,7 +149,6 @@ if __name__ == '__main__':
         checkpoint = torch.load(args.reconstruction, args.device)
         args, checkpoint = legacy_compatibility(args, checkpoint)
         model_recon = get_model_from_checkpoint(checkpoint)
-        model_recon = load_model(checkpoint)
     main(config, model_recon)
 
-# python train_ediff.py --config config/ediff.json --reconstruction pretrained/reconstruction_model.pth --e2vid
+# python train_ediff.py --config config/ediff.json --reconstruction pretrained/model.pth

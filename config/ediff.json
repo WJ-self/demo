@@ -23,8 +23,8 @@
     "data_loader": {
         "type": "HDF5DataLoader",
         "args": {
-            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_H5/data_file.txt",
-            "batch_size": 2,
+            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_H5/train/data_file.txt",
+            "batch_size": 1,
             "shuffle": true,
             "num_workers": 0,
             "pin_memory": true,
@@ -45,7 +45,7 @@
                 "dataset_kwargs": {
                     "transforms": {
                         "RandomCrop": {
-                            "size": 112
+                            "size": 128
                         },
                         "RandomFlip": {}
                     },
@@ -57,7 +57,7 @@
     "valid_data_loader": {
         "type": "HDF5DataLoader",
         "args": {
-            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_H5/data_file.txt",
+            "data_file": "/root/autodl-tmp/data_eventcnn/ECD_H5/val/data_file.txt",
             "batch_size": 1,
             "shuffle": false,
             "num_workers": 0,
@@ -70,7 +70,7 @@
                     "max_length": 320,
                     "transforms": {
                         "CenterCrop": {
-                            "size": 160
+                            "size": 128
                         }
                     },
                     "num_bins": 5

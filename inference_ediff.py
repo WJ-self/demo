@@ -130,8 +130,6 @@ def main(args, model):
             fname = 'frame_{:010d}.png'.format(i)
             cv2.imwrite(join(args.output_folder, fname), pred_img)
         append_timestamp(ts_fname, fname, item['timestamp'].item())
-        if (i==10):
-            break
     pred_video_tensor, gt_video_tensor = make_recon_video(pred_imgs, imgs)
     # 将视频数据添加到 TensorBoard
     # 注意：TensorBoard期望视频数据的形状为 (B, C, T, H, W)，其中 T 是帧数  
@@ -192,4 +190,4 @@ if __name__ == '__main__':
     model = load_model(checkpoint)
     main(args, model)
 
-# python inference_ediff.py --checkpoint_path pretrained/demo_best_231214.pth --log_path /root/autodl-tmp/save_eventcnn/infer_log/12151020 --device 0 --events_file_path /root/autodl-tmp/data_eventcnn/ECD_H5/val/shapes_6dof.h5 --output_folder /root/autodl-tmp/save_eventcnn/infer
+# python inference_ediff.py --checkpoint_path pretrained/demo_best_231215.pth --log_path /root/autodl-tmp/save_eventcnn/infer_log/12161030 --device 0 --events_file_path /root/autodl-tmp/data_eventcnn/ECD_H5/val/shapes_6dof.h5 --output_folder /root/autodl-tmp/save_eventcnn/infer
